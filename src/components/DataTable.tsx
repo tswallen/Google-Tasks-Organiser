@@ -42,18 +42,23 @@ export function DataTable({ tasks, onPatch, settings, shuffleKey }: Props) {
 
   const eligible = filterBySettings(tasks, settings);
 
-  // Pick initial visible set on shuffle or capacity change
+  // Full re-randomise on shuffle
+  useEffect(() => {
+    setVisibleIds(sampleN(eligible, capacity).map((t) => t.id));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [shuffleKey]);
+
+  // Adjust to capacity without discarding current items
   useEffect(() => {
     setVisibleIds((prev) => {
       const eligibleIds = new Set(eligible.map((t) => t.id));
-      const kept = prev.filter((id) => eligibleIds.has(id));
-      if (kept.length >= capacity) return kept.slice(0, capacity);
+      const kept = prev.filter((id) => eligibleIds.has(id)).slice(0, capacity);
+      if (kept.length >= capacity) return kept;
       const pool = eligible.filter((t) => !new Set(kept).has(t.id));
-      const added = sampleN(pool, capacity - kept.length).map((t) => t.id);
-      return [...kept, ...added];
+      return [...kept, ...sampleN(pool, capacity - kept.length).map((t) => t.id)];
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [shuffleKey, capacity]);
+  }, [capacity]);
 
   // When eligible set changes (score/settings change), remove ineligible and refill
   useEffect(() => {

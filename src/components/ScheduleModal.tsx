@@ -1,4 +1,5 @@
-import { useEffect, useRef } from 'react';
+import { useEffect } from 'react';
+import { createPortal } from 'react-dom';
 import { X, Printer } from 'lucide-react';
 import type { TaskItem } from '../types';
 
@@ -30,8 +31,6 @@ export function buildSchedule(tasks: TaskItem[], scheduledIds: Set<string>): Day
 }
 
 export function ScheduleModal({ schedule, onClose }: Props) {
-  const modalRef = useRef<HTMLDivElement>(null);
-
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
       if (e.key === 'Escape') onClose();
@@ -40,35 +39,28 @@ export function ScheduleModal({ schedule, onClose }: Props) {
     return () => window.removeEventListener('keydown', handler);
   }, [onClose]);
 
-  const handlePrint = () => window.print();
-
   return (
     <>
-      {/* Print styles injected into head */}
+      {/* Inject print styles once */}
       <style>{`
         @media print {
-          body > * { display: none !important; }
-          #schedule-print-root { display: block !important; }
-          #schedule-print-root .no-print { display: none !important; }
+          #root { display: none !important; }
+          #schedule-print-portal { display: block !important; }
         }
-        #schedule-print-root { display: none; }
+        #schedule-print-portal { display: none; }
       `}</style>
 
-      {/* Overlay (screen only) */}
+      {/* Screen modal */}
       <div
-        className="fixed inset-0 bg-black/70 z-40 flex items-center justify-center no-print"
+        className="fixed inset-0 bg-black/70 z-40 flex items-center justify-center"
         onClick={(e) => e.target === e.currentTarget && onClose()}
       >
-        <div
-          ref={modalRef}
-          className="bg-gray-900 border border-gray-700 rounded-lg shadow-2xl w-full max-w-2xl max-h-[90vh] flex flex-col"
-        >
-          {/* Modal header */}
+        <div className="bg-gray-900 border border-gray-700 rounded-lg shadow-2xl w-full max-w-2xl max-h-[90vh] flex flex-col">
           <div className="flex items-center justify-between px-5 py-3 border-b border-gray-700 flex-shrink-0">
             <h2 className="text-base font-semibold text-gray-100">Weekly Schedule</h2>
             <div className="flex items-center gap-2">
               <button
-                onClick={handlePrint}
+                onClick={() => window.print()}
                 title="Print"
                 className="flex items-center gap-1.5 px-3 py-1.5 text-sm bg-blue-600 hover:bg-blue-500 text-white rounded transition-colors"
               >
@@ -85,7 +77,6 @@ export function ScheduleModal({ schedule, onClose }: Props) {
             </div>
           </div>
 
-          {/* Scrollable body */}
           <div className="overflow-y-auto flex-1 px-5 py-4 space-y-5">
             {schedule.map(({ day, tasks }) => (
               <DayBlock key={day} day={day} tasks={tasks} />
@@ -94,10 +85,13 @@ export function ScheduleModal({ schedule, onClose }: Props) {
         </div>
       </div>
 
-      {/* Print-only version rendered outside the modal overlay */}
-      <div id="schedule-print-root">
-        <PrintLayout schedule={schedule} />
-      </div>
+      {/* Print layout mounted directly on body via portal so hiding #root doesn't hide it */}
+      {createPortal(
+        <div id="schedule-print-portal">
+          <PrintLayout schedule={schedule} />
+        </div>,
+        document.body
+      )}
     </>
   );
 }
@@ -114,7 +108,6 @@ function DayBlock({ day, tasks }: { day: string; tasks: TaskItem[] }) {
                 <input type="checkbox" className="accent-blue-500 cursor-pointer" />
               </td>
               <td className="py-1.5 text-gray-200">{task.title}</td>
-              <td className="py-1.5 w-12 text-right text-xs text-gray-500">{task.score}</td>
             </tr>
           ))}
         </tbody>
@@ -129,14 +122,23 @@ function PrintLayout({ schedule }: { schedule: DaySchedule[] }) {
       <h1 style={{ fontSize: '18px', marginBottom: '20px' }}>Weekly Schedule</h1>
       {schedule.map(({ day, tasks }) => (
         <div key={day} style={{ marginBottom: '20px', pageBreakInside: 'avoid' }}>
-          <h2 style={{ fontSize: '13px', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '4px', borderBottom: '1px solid #ccc', paddingBottom: '2px' }}>
+          <h2
+            style={{
+              fontSize: '13px',
+              textTransform: 'uppercase',
+              letterSpacing: '0.05em',
+              marginBottom: '4px',
+              borderBottom: '1px solid #ccc',
+              paddingBottom: '2px',
+            }}
+          >
             {day}
           </h2>
           <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '12px' }}>
             <tbody>
               {tasks.map((task) => (
                 <tr key={task.id} style={{ borderBottom: '1px solid #eee' }}>
-                  <td style={{ padding: '5px 4px', width: '20px' }}>
+                  <td style={{ padding: '5px 4px', width: '24px' }}>
                     <input type="checkbox" />
                   </td>
                   <td style={{ padding: '5px 4px' }}>{task.title}</td>

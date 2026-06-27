@@ -39,3 +39,20 @@ export function importTasks(incoming: Partial<TaskItem>[], existing: TaskItem[])
 export function updateTask(tasks: TaskItem[], id: string, patch: Partial<TaskItem>): TaskItem[] {
   return tasks.map((t) => (t.id === id ? { ...t, ...patch } : t));
 }
+
+const SCHEDULED_KEY = 'gto_scheduled';
+
+export function loadScheduledIds(): Set<string> {
+  try {
+    const raw = localStorage.getItem(SCHEDULED_KEY);
+    return new Set(raw ? JSON.parse(raw) : []);
+  } catch {
+    return new Set();
+  }
+}
+
+export function markScheduled(ids: string[]): void {
+  const existing = loadScheduledIds();
+  ids.forEach((id) => existing.add(id));
+  localStorage.setItem(SCHEDULED_KEY, JSON.stringify([...existing]));
+}

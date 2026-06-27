@@ -3,6 +3,7 @@ import {
   Upload,
   Download,
   Shuffle,
+  CalendarDays,
   PanelRightClose,
   PanelRightOpen,
   Settings,
@@ -13,6 +14,7 @@ interface Props {
   onImport: (file: File) => void;
   onExport: () => void;
   onShuffle: () => void;
+  onSchedule: () => void;
   sidebarOpen: boolean;
   onToggleSidebar: () => void;
   settings: SettingsType;
@@ -23,6 +25,7 @@ export function MenuBar({
   onImport,
   onExport,
   onShuffle,
+  onSchedule,
   sidebarOpen,
   onToggleSidebar,
   settings,
@@ -50,6 +53,9 @@ export function MenuBar({
         </IconBtn>
         <IconBtn title="Shuffle" onClick={onShuffle}>
           <Shuffle size={18} />
+        </IconBtn>
+        <IconBtn title="Quick Schedule" onClick={onSchedule}>
+          <CalendarDays size={18} />
         </IconBtn>
       </div>
 

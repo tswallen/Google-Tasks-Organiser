@@ -16,6 +16,7 @@ export default function App() {
   const [settings, setSettings] = useState<Settings>({ showBelow1: true, showAbove1: true });
   const [shuffleKey, setShuffleKey] = useState(0);
   const [schedule, setSchedule] = useState<DaySchedule[] | null>(null);
+  const [schedulePool, setSchedulePool] = useState<{ ids: Set<string>; tasks: typeof initialTasks }>({ ids: new Set(), tasks: [] });
 
   const setAndSave = useCallback((updater: (prev: TaskItem[]) => TaskItem[]) => {
     setTasks((prev) => {
@@ -68,6 +69,8 @@ export default function App() {
     }
     const usedIds = result.flatMap((d) => d.tasks.map((t) => t.id));
     markScheduled(usedIds);
+    // Snapshot tasks + scheduledIds at generation time for the replacement pool
+    setSchedulePool({ ids: new Set([...scheduledIds, ...usedIds]), tasks });
     setSchedule(result);
   }, [tasks]);
 
@@ -100,7 +103,12 @@ export default function App() {
         {sidebarOpen && <Sidebar tasks={tasks} onPatch={handlePatch} />}
       </div>
       {schedule && (
-        <ScheduleModal schedule={schedule} onClose={() => setSchedule(null)} />
+        <ScheduleModal
+          initialSchedule={schedule}
+          allTasks={schedulePool.tasks}
+          scheduledIds={schedulePool.ids}
+          onClose={() => setSchedule(null)}
+        />
       )}
     </div>
   );

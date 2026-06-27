@@ -1,4 +1,4 @@
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { X, Printer } from 'lucide-react';
 import type { TaskItem } from '../types';
@@ -12,7 +12,9 @@ export interface DaySchedule {
 }
 
 interface Props {
-  schedule: DaySchedule[];
+  initialSchedule: DaySchedule[];
+  allTasks: TaskItem[];
+  scheduledIds: Set<string>;
   onClose: () => void;
 }
 
@@ -30,7 +32,9 @@ export function buildSchedule(tasks: TaskItem[], scheduledIds: Set<string>): Day
   }));
 }
 
-export function ScheduleModal({ schedule, onClose }: Props) {
+export function ScheduleModal({ initialSchedule, allTasks, scheduledIds, onClose }: Props) {
+  const [schedule, setSchedule] = useState<DaySchedule[]>(initialSchedule);
+
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
       if (e.key === 'Escape') onClose();
@@ -39,9 +43,32 @@ export function ScheduleModal({ schedule, onClose }: Props) {
     return () => window.removeEventListener('keydown', handler);
   }, [onClose]);
 
+  const handleRemove = (dayIdx: number, taskId: string) => {
+    setSchedule((prev) => {
+      // All IDs currently in the schedule (excluding the one being removed)
+      const inSchedule = new Set(
+        prev.flatMap((d) => d.tasks.map((t) => t.id)).filter((id) => id !== taskId)
+      );
+
+      // Pool: not already scheduled/printed, not already in this schedule
+      const pool = allTasks
+        .filter((t) => !scheduledIds.has(t.id) && !inSchedule.has(t.id) && t.id !== taskId)
+        .sort((a, b) => b.score - a.score);
+
+      const replacement = pool[0] ?? null;
+
+      return prev.map((day, i) => {
+        if (i !== dayIdx) return day;
+        const newTasks = day.tasks
+          .filter((t) => t.id !== taskId)
+          .concat(replacement ? [replacement] : []);
+        return { ...day, tasks: newTasks };
+      });
+    });
+  };
+
   return (
     <>
-      {/* Inject print styles once */}
       <style>{`
         @media print {
           #root { display: none !important; }
@@ -78,14 +105,18 @@ export function ScheduleModal({ schedule, onClose }: Props) {
           </div>
 
           <div className="overflow-y-auto flex-1 px-5 py-4 space-y-5">
-            {schedule.map(({ day, tasks }) => (
-              <DayBlock key={day} day={day} tasks={tasks} />
+            {schedule.map(({ day, tasks }, dayIdx) => (
+              <DayBlock
+                key={day}
+                day={day}
+                tasks={tasks}
+                onRemove={(taskId) => handleRemove(dayIdx, taskId)}
+              />
             ))}
           </div>
         </div>
       </div>
 
-      {/* Print layout mounted directly on body via portal so hiding #root doesn't hide it */}
       {createPortal(
         <div id="schedule-print-portal">
           <PrintLayout schedule={schedule} />
@@ -96,18 +127,35 @@ export function ScheduleModal({ schedule, onClose }: Props) {
   );
 }
 
-function DayBlock({ day, tasks }: { day: string; tasks: TaskItem[] }) {
+function DayBlock({
+  day,
+  tasks,
+  onRemove,
+}: {
+  day: string;
+  tasks: TaskItem[];
+  onRemove: (id: string) => void;
+}) {
   return (
     <div>
       <h3 className="text-sm font-semibold text-blue-400 mb-1 uppercase tracking-wide">{day}</h3>
       <table className="w-full text-sm border-collapse">
         <tbody>
           {tasks.map((task) => (
-            <tr key={task.id} className="border-b border-gray-800">
+            <tr key={task.id} className="border-b border-gray-800 group">
               <td className="py-1.5 w-7 text-center">
                 <input type="checkbox" className="accent-blue-500 cursor-pointer" />
               </td>
               <td className="py-1.5 text-gray-200">{task.title}</td>
+              <td className="py-1.5 w-7 text-center">
+                <button
+                  onClick={() => onRemove(task.id)}
+                  title="Remove and replace"
+                  className="opacity-0 group-hover:opacity-100 p-0.5 text-gray-500 hover:text-red-400 transition-opacity"
+                >
+                  <X size={13} />
+                </button>
+              </td>
             </tr>
           ))}
         </tbody>

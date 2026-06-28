@@ -1,17 +1,20 @@
 import { useState, useEffect, useRef } from 'react';
-import { ChevronUp, ChevronDown, ChevronsUpDown, ThumbsUp, ThumbsDown } from 'lucide-react';
-import type { TaskItem, SortField, SortDir, Settings } from '../types';
+import { ChevronUp, ChevronDown, ChevronsUpDown, ThumbsUp, ThumbsDown, RotateCcw } from 'lucide-react';
+import type { TaskItem, SortField, SortDir, Settings, ReadFilter } from '../types';
 import { formatDate, sampleN } from '../utils';
 
 interface Props {
   tasks: TaskItem[];
   onPatch: (id: string, patch: Partial<TaskItem>) => void;
+  onMarkRead: (ids: string[]) => void;
   settings: Settings;
+  readFilter: ReadFilter;
   shuffleKey: number;
 }
 
-function filterBySettings(tasks: TaskItem[], settings: Settings): TaskItem[] {
+function filterBySettings(tasks: TaskItem[], settings: Settings, readFilter: ReadFilter): TaskItem[] {
   return tasks.filter((t) => {
+    if (t.read !== (readFilter === 'read')) return false;
     if (t.score < 1 && !settings.showBelow1) return false;
     if (t.score > 1 && !settings.showAbove1) return false;
     return true;
@@ -20,7 +23,7 @@ function filterBySettings(tasks: TaskItem[], settings: Settings): TaskItem[] {
 
 const ROW_HEIGHT = 40;
 
-export function DataTable({ tasks, onPatch, settings, shuffleKey }: Props) {
+export function DataTable({ tasks, onPatch, onMarkRead, settings, readFilter, shuffleKey }: Props) {
   const containerRef = useRef<HTMLDivElement>(null);
   const [capacity, setCapacity] = useState(20);
   const [visibleIds, setVisibleIds] = useState<string[]>([]);
@@ -29,26 +32,34 @@ export function DataTable({ tasks, onPatch, settings, shuffleKey }: Props) {
     dir: 'desc',
   });
 
-  // Measure capacity
+  // Track visibleIds in a ref so effects can read the latest value synchronously
+  const visibleIdsRef = useRef<string[]>([]);
+  useEffect(() => {
+    visibleIdsRef.current = visibleIds;
+  });
+
+  // Measure capacity from container height
   useEffect(() => {
     if (!containerRef.current) return;
     const ro = new ResizeObserver(() => {
-      const h = containerRef.current!.clientHeight - 40; // subtract header
+      const h = containerRef.current!.clientHeight - 40;
       setCapacity(Math.max(1, Math.floor(h / ROW_HEIGHT)));
     });
     ro.observe(containerRef.current);
     return () => ro.disconnect();
   }, []);
 
-  const eligible = filterBySettings(tasks, settings);
+  const eligible = filterBySettings(tasks, settings, readFilter);
 
-  // Full re-randomise on shuffle
+  // Full re-randomise on shuffle — mark current visible items as read first
   useEffect(() => {
+    const toRead = visibleIdsRef.current;
+    if (readFilter === 'unread') onMarkRead(toRead);
     setVisibleIds(sampleN(eligible, capacity).map((t) => t.id));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [shuffleKey]);
 
-  // Adjust to capacity without discarding current items
+  // Adjust to capacity change without discarding current items
   useEffect(() => {
     setVisibleIds((prev) => {
       const eligibleIds = new Set(eligible.map((t) => t.id));
@@ -60,19 +71,19 @@ export function DataTable({ tasks, onPatch, settings, shuffleKey }: Props) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [capacity]);
 
-  // When eligible set changes (score/settings change), remove ineligible and refill
+  // When eligible set shrinks (score/settings/readFilter change): remove ineligible items,
+  // mark them as read (if in unread mode), do NOT refill
   useEffect(() => {
-    setVisibleIds((prev) => {
-      const eligibleMap = new Map(eligible.map((t) => [t.id, t]));
-      const kept = prev.filter((id) => eligibleMap.has(id));
-      if (kept.length === prev.length && kept.length >= Math.min(capacity, eligible.length))
-        return prev;
-      const pool = eligible.filter((t) => !new Set(kept).has(t.id));
-      const added = sampleN(pool, capacity - kept.length).map((t) => t.id);
-      return [...kept, ...added];
-    });
+    const eligibleIds = new Set(eligible.map((t) => t.id));
+    const prev = visibleIdsRef.current;
+    const removed = prev.filter((id) => !eligibleIds.has(id));
+
+    if (removed.length > 0) {
+      if (readFilter === 'unread') onMarkRead(removed);
+      setVisibleIds(prev.filter((id) => eligibleIds.has(id)));
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [tasks, settings, capacity]);
+  }, [tasks, settings, readFilter]);
 
   const visibleMap = new Map(tasks.map((t) => [t.id, t]));
   let rows = visibleIds.map((id) => visibleMap.get(id)).filter(Boolean) as TaskItem[];
@@ -112,6 +123,7 @@ export function DataTable({ tasks, onPatch, settings, shuffleKey }: Props) {
           <col style={{ width: 60 }} />
           <col />
           <col style={{ width: 100 }} />
+          {readFilter === 'read' && <col style={{ width: 44 }} />}
           <col style={{ width: 44 }} />
           <col style={{ width: 70 }} />
           <col style={{ width: 44 }} />
@@ -121,6 +133,7 @@ export function DataTable({ tasks, onPatch, settings, shuffleKey }: Props) {
             <SortTh label="Starred" field="starred" sort={sort} onSort={toggleSort} />
             <th className="px-3 text-left text-gray-400 font-medium">Title</th>
             <SortTh label="Date" field="date" sort={sort} onSort={toggleSort} />
+            {readFilter === 'read' && <th />}
             <th />
             <SortTh label="Score" field="score" sort={sort} onSort={toggleSort} />
             <th />
@@ -128,7 +141,7 @@ export function DataTable({ tasks, onPatch, settings, shuffleKey }: Props) {
         </thead>
         <tbody>
           {rows.map((task) => (
-            <DataRow key={task.id} task={task} onPatch={onPatch} />
+            <DataRow key={task.id} task={task} onPatch={onPatch} showUnreadBtn={readFilter === 'read'} />
           ))}
         </tbody>
       </table>
@@ -156,11 +169,7 @@ function SortTh({
       <span className="flex items-center gap-1">
         {label}
         {active ? (
-          sort.dir === 'asc' ? (
-            <ChevronUp size={13} />
-          ) : (
-            <ChevronDown size={13} />
-          )
+          sort.dir === 'asc' ? <ChevronUp size={13} /> : <ChevronDown size={13} />
         ) : (
           <ChevronsUpDown size={13} className="opacity-40" />
         )}
@@ -169,18 +178,21 @@ function SortTh({
   );
 }
 
-function DataRow({ task, onPatch }: { task: TaskItem; onPatch: (id: string, patch: Partial<TaskItem>) => void }) {
+function DataRow({
+  task,
+  onPatch,
+  showUnreadBtn,
+}: {
+  task: TaskItem;
+  onPatch: (id: string, patch: Partial<TaskItem>) => void;
+  showUnreadBtn: boolean;
+}) {
   const [editing, setEditing] = useState(false);
   const [titleVal, setTitleVal] = useState(task.title);
   const inputRef = useRef<HTMLInputElement>(null);
 
-  useEffect(() => {
-    setTitleVal(task.title);
-  }, [task.title]);
-
-  useEffect(() => {
-    if (editing) inputRef.current?.focus();
-  }, [editing]);
+  useEffect(() => { setTitleVal(task.title); }, [task.title]);
+  useEffect(() => { if (editing) inputRef.current?.focus(); }, [editing]);
 
   const commitTitle = () => {
     setEditing(false);
@@ -213,10 +225,7 @@ function DataRow({ task, onPatch }: { task: TaskItem; onPatch: (id: string, patc
             onBlur={commitTitle}
             onKeyDown={(e) => {
               if (e.key === 'Enter') commitTitle();
-              if (e.key === 'Escape') {
-                setTitleVal(task.title);
-                setEditing(false);
-              }
+              if (e.key === 'Escape') { setTitleVal(task.title); setEditing(false); }
             }}
             className="w-full bg-gray-700 border border-blue-500 rounded px-1 text-gray-100 outline-none text-sm"
           />
@@ -233,6 +242,19 @@ function DataRow({ task, onPatch }: { task: TaskItem; onPatch: (id: string, patc
 
       {/* Date */}
       <td className="px-3 text-gray-400 text-xs whitespace-nowrap">{formatDate(task.updated)}</td>
+
+      {/* Mark unread (read mode only) */}
+      {showUnreadBtn && (
+        <td className="text-center">
+          <button
+            onClick={() => onPatch(task.id, { read: false })}
+            title="Mark as unread"
+            className="p-1 text-gray-500 hover:text-blue-400 hover:bg-blue-500/10 rounded"
+          >
+            <RotateCcw size={13} />
+          </button>
+        </td>
+      )}
 
       {/* Upvote */}
       <td className="text-center">

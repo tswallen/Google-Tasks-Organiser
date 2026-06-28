@@ -20,7 +20,7 @@ interface Props {
 
 export function buildSchedule(tasks: TaskItem[], scheduledIds: Set<string>): DaySchedule[] | null {
   const pool = [...tasks]
-    .filter((t) => !scheduledIds.has(t.id))
+    .filter((t) => t.read && !scheduledIds.has(t.id))
     .sort((a, b) => b.score - a.score);
 
   const needed = DAYS.length * TASKS_PER_DAY;

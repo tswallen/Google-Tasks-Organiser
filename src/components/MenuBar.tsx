@@ -7,8 +7,10 @@ import {
   PanelRightClose,
   PanelRightOpen,
   Settings,
+  BookOpen,
+  BookMarked,
 } from 'lucide-react';
-import type { Settings as SettingsType } from '../types';
+import type { Settings as SettingsType, ReadFilter } from '../types';
 
 interface Props {
   onImport: (file: File) => void;
@@ -19,6 +21,9 @@ interface Props {
   onToggleSidebar: () => void;
   settings: SettingsType;
   onSettingsChange: (s: SettingsType) => void;
+  readFilter: ReadFilter;
+  onReadFilterChange: (f: ReadFilter) => void;
+  counts: { total: number; read: number; unread: number };
 }
 
 export function MenuBar({
@@ -30,6 +35,9 @@ export function MenuBar({
   onToggleSidebar,
   settings,
   onSettingsChange,
+  readFilter,
+  onReadFilterChange,
+  counts,
 }: Props) {
   const fileRef = useRef<HTMLInputElement>(null);
   const [settingsOpen, setSettingsOpen] = useState(false);
@@ -57,6 +65,27 @@ export function MenuBar({
         <IconBtn title="Quick Schedule" onClick={onSchedule}>
           <CalendarDays size={18} />
         </IconBtn>
+
+        <div className="w-px h-5 bg-gray-600 mx-1" />
+
+        {/* Read/Unread toggle */}
+        <button
+          title={readFilter === 'unread' ? 'Showing unread — click to show read' : 'Showing read — click to show unread'}
+          onClick={() => onReadFilterChange(readFilter === 'unread' ? 'read' : 'unread')}
+          className={`flex items-center gap-1.5 px-2.5 py-1 rounded text-xs font-medium transition-colors ${
+            readFilter === 'unread'
+              ? 'bg-blue-600/20 text-blue-400 border border-blue-600/40 hover:bg-blue-600/30'
+              : 'bg-amber-600/20 text-amber-400 border border-amber-600/40 hover:bg-amber-600/30'
+          }`}
+        >
+          {readFilter === 'unread' ? <BookMarked size={13} /> : <BookOpen size={13} />}
+          {readFilter === 'unread' ? 'Unread' : 'Read'}
+        </button>
+
+        {/* Counts */}
+        <span className="text-xs text-gray-500 ml-2 select-none">
+          {counts.unread} unread · {counts.read} read · {counts.total} total
+        </span>
       </div>
 
       {/* Right group */}
@@ -65,7 +94,6 @@ export function MenuBar({
           {sidebarOpen ? <PanelRightClose size={18} /> : <PanelRightOpen size={18} />}
         </IconBtn>
 
-        {/* Settings with hover dropdown */}
         <div
           className="relative"
           onMouseEnter={() => setSettingsOpen(true)}

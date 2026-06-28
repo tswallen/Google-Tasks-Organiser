@@ -1,6 +1,14 @@
-import { useState, useCallback } from 'react';
-import type { TaskItem, Settings } from './types';
-import { loadTasks, saveTasks, importTasks, updateTask, loadScheduledIds, markScheduled } from './store';
+import { useState, useCallback, useMemo } from 'react';
+import type { TaskItem, Settings, ReadFilter } from './types';
+import {
+  loadTasks,
+  saveTasks,
+  importTasks,
+  updateTask,
+  markManyRead,
+  loadScheduledIds,
+  markScheduled,
+} from './store';
 import { MenuBar } from './components/MenuBar';
 import { DataTable } from './components/DataTable';
 import { Sidebar } from './components/Sidebar';
@@ -14,9 +22,13 @@ export default function App() {
   const [tasks, setTasks] = useState<TaskItem[]>(initialTasks);
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [settings, setSettings] = useState<Settings>({ showBelow1: true, showAbove1: true });
+  const [readFilter, setReadFilter] = useState<ReadFilter>('unread');
   const [shuffleKey, setShuffleKey] = useState(0);
   const [schedule, setSchedule] = useState<DaySchedule[] | null>(null);
-  const [schedulePool, setSchedulePool] = useState<{ ids: Set<string>; tasks: typeof initialTasks }>({ ids: new Set(), tasks: [] });
+  const [schedulePool, setSchedulePool] = useState<{ ids: Set<string>; tasks: TaskItem[] }>({
+    ids: new Set(),
+    tasks: [],
+  });
 
   const setAndSave = useCallback((updater: (prev: TaskItem[]) => TaskItem[]) => {
     setTasks((prev) => {
@@ -58,21 +70,14 @@ export default function App() {
     setShuffleKey((k) => k + 1);
   }, []);
 
-  const handleSchedule = useCallback(() => {
-    const scheduledIds = loadScheduledIds();
-    const result = buildSchedule(tasks, scheduledIds);
-    if (!result) {
-      alert(
-        'Not enough unscheduled tasks to fill a week (need 21). Import more tasks or all tasks have already been scheduled.'
-      );
-      return;
-    }
-    const usedIds = result.flatMap((d) => d.tasks.map((t) => t.id));
-    markScheduled(usedIds);
-    // Snapshot tasks + scheduledIds at generation time for the replacement pool
-    setSchedulePool({ ids: new Set([...scheduledIds, ...usedIds]), tasks });
-    setSchedule(result);
-  }, [tasks]);
+  // Called by DataTable when items are dismissed from the visible set
+  const handleMarkRead = useCallback(
+    (ids: string[]) => {
+      if (ids.length === 0) return;
+      setAndSave((prev) => markManyRead(prev, ids));
+    },
+    [setAndSave]
+  );
 
   const handlePatch = useCallback(
     (id: string, patch: Partial<TaskItem>) => {
@@ -80,6 +85,27 @@ export default function App() {
     },
     [setAndSave]
   );
+
+  const handleSchedule = useCallback(() => {
+    const scheduledIds = loadScheduledIds();
+    const result = buildSchedule(tasks, scheduledIds);
+    if (!result) {
+      alert(
+        'Not enough read, unscheduled tasks to fill a week (need 21). Read more items or import more tasks.'
+      );
+      return;
+    }
+    const usedIds = result.flatMap((d) => d.tasks.map((t) => t.id));
+    markScheduled(usedIds);
+    setSchedulePool({ ids: new Set([...scheduledIds, ...usedIds]), tasks });
+    setSchedule(result);
+  }, [tasks]);
+
+  const counts = useMemo(() => {
+    const total = tasks.length;
+    const read = tasks.filter((t) => t.read).length;
+    return { total, read, unread: total - read };
+  }, [tasks]);
 
   return (
     <div className="flex flex-col h-screen bg-gray-900 text-gray-200">
@@ -92,12 +118,17 @@ export default function App() {
         onToggleSidebar={() => setSidebarOpen((v) => !v)}
         settings={settings}
         onSettingsChange={setSettings}
+        readFilter={readFilter}
+        onReadFilterChange={setReadFilter}
+        counts={counts}
       />
       <div className="flex flex-1 min-h-0">
         <DataTable
           tasks={tasks}
           onPatch={handlePatch}
+          onMarkRead={handleMarkRead}
           settings={settings}
+          readFilter={readFilter}
           shuffleKey={shuffleKey}
         />
         {sidebarOpen && <Sidebar tasks={tasks} onPatch={handlePatch} />}
